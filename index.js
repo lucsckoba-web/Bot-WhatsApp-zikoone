@@ -1,3 +1,6 @@
+const http = require('http');
+const port = process.env.PORT || 3000;
+http.createServer((req, res) => res.end('Bot WhatsApp VIP Zikoone en ligne !')).listen(port);
 const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
 const axios = require('axios');
 const qrcode = require('qrcode-terminal');
