@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PariPesa VIP - Pronostics & Coupons</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
+        body { background-color: #f4f6f9; color: #333333; display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 15px; }
+        .card { background: #ffffff; border: 1px solid #e1e4e8; border-radius: 16px; padding: 25px; width: 100%; max-width: 420px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); text-align: center; }
+        h1 { color: #003366; font-size: 22px; margin-bottom: 8px; text-transform: uppercase; display: flex; align-items: center; justify-content: center; gap: 8px; }
+        p.subtitle { color: #666666; font-size: 13px; margin-bottom: 20px; }
+        
+        .login-box, .signals-box { display: block; }
+        .hidden { display: none !important; }
+
+        input[type="text"] { width: 100%; padding: 14px; border-radius: 8px; border: 2px solid #e1e4e8; background: #ffffff; color: #333; font-size: 16px; text-align: center; margin-bottom: 15px; outline: none; transition: border-color 0.2s; }
+        input[type="text"]:focus { border-color: #0056b3; }
+
+        .btn { width: 100%; padding: 14px; background: linear-gradient(45deg, #003366, #0056b3); border: none; border-radius: 8px; color: #fff; font-weight: bold; font-size: 16px; cursor: pointer; transition: 0.2s; text-transform: uppercase; }
+        .btn:hover { opacity: 0.95; }
+        .btn:disabled { background: #cbd5e1; color: #64748b; cursor: not-allowed; opacity: 0.7; }
+
+        .alert { padding: 12px; border-radius: 8px; font-size: 14px; margin-top: 15px; text-align: center; white-space: pre-line; }
+        .alert-error { background: #fff5f5; border: 1px solid #feb2b2; color: #c53030; }
+        .alert-success { background: #f0fff4; border: 1px solid #9ae6b4; color: #276749; }
+        .alert-warning { background: #fffaf0; border: 1px solid #fbd38d; color: #dd6b20; }
+
+        .session-badge { background: #e2e8f0; border: 1px solid #cbd5e1; border-radius: 20px; padding: 6px 16px; display: inline-block; color: #003366; font-size: 14px; font-weight: bold; margin-bottom: 15px; }
+        .signal-display { background: #f8fafc; border: 2px dashed #cbd5e1; border-radius: 12px; padding: 20px; margin-bottom: 20px; }
+        .sig-time { font-size: 18px; color: #64748b; margin-bottom: 5px; }
+        .sig-odd { font-size: 36px; font-weight: bold; color: #16a34a; margin: 10px 0; }
+        .sig-safe { font-size: 14px; color: #0056b3; font-weight: bold; }
+        .logout-link { color: #64748b; font-size: 12px; text-decoration: underline; cursor: pointer; margin-top: 15px; display: inline-block; }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <h1>⚽ PARIPESA VIP</h1>
+    <p class="subtitle">Accès exclusif aux pronostics & coupons VIP</p>
+
+    <!-- ÉCRAN DE CONNEXION -->
+    <div id="login-screen" class="login-box">
+        <input type="text" id="user-id" placeholder="Ex: 383105325">
+        <button class="btn" onclick="verifyAccess()">VÉRIFIER MON ACCÈS</button>
+        <div id="login-msg" class="alert hidden"></div>
+    </div>
+
+    <!-- ÉCRAN DES SIGNAUX ET COUPONS -->
+    <div id="signal-screen" class="signals-box hidden">
+        <div id="session-title" class="session-badge">SESSION EN COURS</div>
+        
+        <div class="signal-display">
+            <div id="signal-time" class="sig-time">Heure: --:--</div>
+            <div id="signal-odd" class="sig-odd">x0.00</div>
+            <div id="signal-safe" class="sig-safe">Code Promo : ZIKOONE</div>
+        </div>
+
+        <button id="next-btn" class="btn" onclick="nextSignal()">PROCHAIN COUPON</button>
+        <div>
+            <span class="logout-link" onclick="logout()">Changer d'ID PariPesa</span>
+        </div>
+    </div>
+</div>
+
+<script>
+    const WORKER_URL = "https://teams-paris-pesa.lucsckoba.workers.dev";
+    let activeSignals = [];
+    let currentIndex = 0;
+    let autoCheckTimer = null;
+
+    window.addEventListener('DOMContentLoaded', () => {
+        const savedId = localStorage.getItem('paripesa_vip_id');
+        if (savedId) {
+            document.getElementById('user-id').value = savedId;
+            verifyAccess(true);
+        }
+    });
+
+    async function verifyAccess(isAuto = false) {
+        const userId = document.getElementById('user-id').value.trim();
+
+        if (!userId || !/^\d+$/.test(userId)) {
+            showMsg("❌ Veuillez entrer un ID joueur PariPesa valide (chiffres uniquement).", "error");
+            return;
+        }
+
+        try {
+            // 1. Vérification de l'ID via le Worker Cloudflare
+            const statusRes = await fetch(`${WORKER_URL}/?id=${userId}`);
+            const statusData = await statusRes.json();
+
+            // CAS 1 : ID non rattaché au code ZIKOONE
+            if (!statusData.registered) {
+                showMsg("❌ ACCÈS REFUSÉ\nCet ID n'est pas rattaché au code promo ZIKOONE.\n\n1. Crée un nouveau compte avec le code ZIKOONE.\n2. Effectue ton premier dépôt.", "error");
+                localStorage.removeItem('paripesa_vip_id');
+                return;
+            }
+
+            // CAS 2 : ID inscrit mais dépôt manquant
+            if (statusData.deposit === 0) {
+                showMsg("⚠️ PREMIER DÉPÔT REQUIS\nTon ID est bien rattaché au code ZIKOONE, mais ton premier dépôt n'a pas encore été détecté.\n\nRecharge ton compte puis réessaie.", "warning");
+                localStorage.removeItem('paripesa_vip_id');
+                return;
+            }
+
+            // CAS 3 : Inscription + Dépôt validés -> Chargement des pronostics
+            const signalsRes = await fetch(`${WORKER_URL}/get-signals?id=${userId}`);
+            const data = await signalsRes.json();
+
+            if (data.error) {
+                showMsg("❌ " + data.error, "error");
+                localStorage.removeItem('paripesa_vip_id');
+                return;
+            }
+
+            localStorage.setItem('paripesa_vip_id', userId);
+            if (!isAuto) showMsg("✅ ACCÈS VÉRIFIÉ AVEC SUCCÈS !", "success");
+            
+            activeSignals = data.signals || [];
+            currentIndex = 0;
+            
+            let cleanSessionName = (data.sessionName || "SESSION VIP ACTIVE").replace(/^Ex:\s*/i, '');
+            document.getElementById('session-title').innerText = cleanSessionName;
+
+            setTimeout(() => {
+                document.getElementById('login-screen').classList.add('hidden');
+                document.getElementById('signal-screen').classList.remove('hidden');
+                updateSignalDisplay();
+
+                if (!autoCheckTimer) {
+                    autoCheckTimer = setInterval(updateButtonStatus, 2000);
+                }
+            }, isAuto ? 0 : 800);
+
+        } catch (e) {
+            showMsg("❌ Connexion au serveur de vérification impossible", "error");
+        }
+    }
+
+    function getSignalMinute(timeStr) {
+        if (!timeStr) return -1;
+        let clean = String(timeStr).replace(/^Ex:\s*/i, '').replace('h', ':').replace('H', ':').trim();
+        const parts = clean.split(':');
+        if (parts.length >= 2) return parseInt(parts[1], 10);
+        return parseInt(parts[0], 10);
+    }
+
+    function hasCurrentSignalPassed(sig) {
+        if (!sig) return true;
+        const sigMin = getSignalMinute(sig.time);
+        if (isNaN(sigMin) || sigMin < 0) return true;
+
+        const currentMin = new Date().getMinutes();
+        return currentMin >= sigMin;
+    }
+
+    function updateSignalDisplay() {
+        if (!activeSignals || activeSignals.length === 0) {
+            document.getElementById('signal-time').innerText = "Information";
+            document.getElementById('signal-odd').innerText = "FINI";
+            document.getElementById('signal-odd').style.color = "#c53030";
+            document.getElementById('signal-safe').innerText = "Aucun pronostic actif disponible";
+            document.getElementById('next-btn').disabled = true;
+            return;
+        }
+
+        if (currentIndex >= activeSignals.length) {
+            document.getElementById('signal-time').innerText = "Session terminée";
+            document.getElementById('signal-odd').innerText = "FINI";
+            document.getElementById('signal-odd').style.color = "#16a34a";
+            document.getElementById('signal-safe').innerText = "Rendez-vous à la prochaine session VIP !";
+            document.getElementById('next-btn').disabled = true;
+            return;
+        }
+
+        const currentSig = activeSignals[currentIndex];
+        const displayTime = String(currentSig.time || "").replace(/^Ex:\s*/i, '');
+
+        document.getElementById('signal-time').innerText = displayTime ? ("Heure du coupon : " + displayTime) : "Coupon disponible";
+        
+        let multiplierText = String(currentSig.multiplier || currentSig.code || "").replace(/^Ex:\s*/i, '');
+        if (!multiplierText.includes('x') && !isNaN(parseFloat(multiplierText))) multiplierText = 'x' + multiplierText;
+        document.getElementById('signal-odd').innerText = multiplierText || "DISPONIBLE";
+        document.getElementById('signal-odd').style.color = "#16a34a";
+        
+        let safeText = String(currentSig.safety || "Code Promo : ZIKOONE").replace(/^Ex:\s*/i, '');
+        document.getElementById('signal-safe').innerText = safeText;
+
+        updateButtonStatus();
+    }
+
+    function updateButtonStatus() {
+        const nextBtn = document.getElementById('next-btn');
+        if (currentIndex >= activeSignals.length) {
+            nextBtn.disabled = true;
+            return;
+        }
+
+        const currentSig = activeSignals[currentIndex];
+        const canGoNext = hasCurrentSignalPassed(currentSig);
+        nextBtn.disabled = !canGoNext;
+    }
+
+    function nextSignal() {
+        const currentSig = activeSignals[currentIndex];
+        if (hasCurrentSignalPassed(currentSig)) {
+            currentIndex++;
+            updateSignalDisplay();
+        }
+    }
+
+    function logout() {
+        if (autoCheckTimer) clearInterval(autoCheckTimer);
+        localStorage.removeItem('paripesa_vip_id');
+        document.getElementById('signal-screen').classList.add('hidden');
+        document.getElementById('login-screen').classList.remove('hidden');
+        document.getElementById('user-id').value = '';
+    }
+
+    function showMsg(text, type) {
+        const msgBox = document.getElementById('login-msg');
+        msgBox.className = "alert " + (type === "error" ? "alert-error" : (type === "warning" ? "alert-warning" : "alert-success"));
+        msgBox.innerText = text;
+        msgBox.classList.remove('hidden');
+    }
+</script>
+
+</body>
+</html>
