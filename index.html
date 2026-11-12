@@ -1,11 +1,11 @@
 const http = require('http');
 const port = process.env.PORT || 3000;
 http.createServer((req, res) => res.end('Service VIP Zikoone en ligne !')).listen(port);
+
 const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
 const axios = require('axios');
 const qrcode = require('qrcode-terminal');
 
-// URL officielle et mise à jour de ton Worker Cloudflare
 const WORKER_URL = "https://teams-paris-pesa.lucsckoba.workers.dev"; 
 
 async function startService() {
@@ -42,7 +42,6 @@ async function startService() {
     const from = msg.key.remoteJid;
     const text = (msg.message.conversation || msg.message.extendedTextMessage?.text || "").trim();
 
-    // 1. DEMANDE DE SIGNAL ("Signal" ou "🚀 Prochain Signal")
     if (text.toLowerCase() === "signal" || text === "🚀 Prochain Signal") {
       try {
         const res = await axios.get(`${WORKER_URL}/api/get-signal`);
@@ -57,7 +56,7 @@ async function startService() {
           const reply = `🎯 *SIGNAL VIP*\n\n` +
                         `⏰ *Heure :* \`${signal.time}\`\n` +
                         `📈 *Multiplicateur / Cote :* \`${signal.cote}\`\n\n` +
-                        `⚠️ *Patiente jusqu'à l'heure exacte.*`;
+                        `⚠️ *Patiente jusqu'à l'heure exacte.*\`;
           await sock.sendMessage(from, { text: reply });
         }
       } catch (e) {
@@ -66,7 +65,6 @@ async function startService() {
       return;
     }
 
-    // 2. VERIFICATION ID JOUEUR (Chiffres uniquement)
     if (/^\d+$/.test(text)) {
       try {
         const res = await axios.post(`${WORKER_URL}/api/check-id`, { userId: text });
@@ -91,5 +89,4 @@ async function startService() {
   });
 }
 
-// Lancement indispensable pour démarrer le script
 startService();
